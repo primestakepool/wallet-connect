@@ -1,88 +1,121 @@
-<div id="wallets-container" style="text-align:center;margin-top:20px;">
-  <h3>Select your wallet to delegate:</h3>
-  <div id="walletButtons"></div>
-  <button id="delegateBtn" style="padding:10px 18px;font-size:16px;display:none;margin-top:15px;">
-    Delegate to Pool
-  </button>
-</div>
-
-<script>
-(async function() {
-  const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy";  // 🔁 Replace with your real pool ID
-  const NETWORK_ID = 1;           // 1 = mainnet
-  let selectedWalletName = null;
-  let api = null;
-
-  function getAvailableWallets() {
-    if (!window.cardano) return {};
-    const wallets = {};
-    for (const name of Object.keys(window.cardano)) {
-      const wallet = window.cardano[name];
-      if (wallet && typeof wallet.enable === "function") wallets[name] = wallet;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cardano Wallet Connect | Prime Stake Pool</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0a0a0a;
+      color: #eee;
+      text-align: center;
+      padding: 40px;
     }
-    return wallets;
-  }
+    h2 {
+      color: #f4b400;
+    }
+    #wallets {
+      margin-top: 30px;
+    }
+    .wallet-btn {
+      background-color: #1e88e5;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      margin: 6px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .wallet-btn:hover {
+      background-color: #1565c0;
+    }
+    #message {
+      margin-top: 25px;
+      font-size: 15px;
+      color: #bbb;
+    }
+  </style>
+</head>
+<body>
+  <h2>Select your wallet to delegate</h2>
+  <div id="wallets">Detecting wallets...</div>
+  <div id="message"></div>
 
-  function renderWalletButtons() {
-    const container = document.getElementById("walletButtons");
-    container.innerHTML = "";
-    const wallets = getAvailableWallets();
+  <script>
+    async function detectWallets() {
+      const wallets = {};
 
-    console.log("Detected wallets:", Object.keys(wallets)); // 👈 debug log
+      if (!window.cardano) {
+        document.getElementById("wallets").innerHTML =
+          "<p>No Cardano wallet found.<br>Please refresh after unlocking your wallet.</p>";
+        console.log("window.cardano not found");
+        return wallets;
+      }
 
-    if (Object.keys(wallets).length === 0) {
-      container.innerHTML = "<p>No Cardano wallet found. Please refresh after unlocking your wallet.</p>";
-      return;
+      console.log("window.cardano keys:", Object.getOwnPropertyNames(window.cardano));
+
+      // Enumerate visible wallets
+      for (const name in window.cardano) {
+        try {
+          const wallet = window.cardano[name];
+          if (wallet && typeof wallet.enable === "function") {
+            wallets[name] = wallet;
+          }
+        } catch (e) {
+          console.warn("Error checking wallet:", name, e);
+        }
+      }
+
+      // Check known wallets that may not be enumerable
+      const knownWallets = ["nami", "eternl", "flint", "yoroi", "lace", "gerowallet"];
+      for (const name of knownWallets) {
+        if (window.cardano[name] && typeof window.cardano[name].enable === "function") {
+          wallets[name] = window.cardano[name];
+        }
+      }
+
+      console.log("Detected wallets:", Object.keys(wallets));
+      return wallets;
     }
 
-    for (const name of Object.keys(wallets)) {
-      const btn = document.createElement("button");
-      btn.textContent = "Connect " + name;
-      btn.style.margin = "5px";
-      btn.style.padding = "10px 16px";
-      btn.style.fontSize = "15px";
-      btn.onclick = () => connectWallet(name);
-      container.appendChild(btn);
-    }
-  }
+    async function renderWalletButtons() {
+      const wallets = await detectWallets();
+      const container = document.getElementById("wallets");
 
-  async function connectWallet(name) {
-    try {
-      selectedWalletName = name;
-      api = await window.cardano[name].enable();
-      const net = await api.getNetworkId();
-      if (net !== NETWORK_ID) {
-        alert("Please switch your wallet to mainnet.");
+      if (Object.keys(wallets).length === 0) {
+        container.innerHTML =
+          "<p>No Cardano wallet found.<br>Please refresh after unlocking your wallet.</p>";
         return;
       }
-      document.getElementById("delegateBtn").style.display = "inline-block";
-      alert("Connected to " + name + "!");
-    } catch (err) {
-      console.error(err);
-      alert("Connection failed: " + err.message);
-    }
-  }
 
-  async function delegateToPool() {
-    if (!api || !selectedWalletName) {
-      alert("Please connect a wallet first.");
-      return;
+      container.innerHTML = "";
+      Object.keys(wallets).forEach((name) => {
+        const btn = document.createElement("button");
+        btn.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+        btn.className = "wallet-btn";
+        btn.onclick = async () => connectWallet(wallets[name], name);
+        container.appendChild(btn);
+      });
     }
 
-    try {
-      const usedAddr = (await api.getUsedAddresses())[0];
-      const rewardAddr = (await api.getRewardAddresses())[0];
-      console.log("Delegating from:", usedAddr);
-      console.log("Reward address:", rewardAddr);
-
-      alert(`Wallet ready to delegate to pool:\n${POOL_ID}\n\nNext: implement transaction build.`);
-    } catch (err) {
-      console.error(err);
-      alert("Delegation failed: " + err.message);
+    async function connectWallet(walletAPI, walletName) {
+      try {
+        const api = await walletAPI.enable();
+        const usedAddresses = await api.getUsedAddresses();
+        document.getElementById("message").innerHTML =
+          `✅ Connected to <b>${walletName}</b> wallet.<br>Detected ${usedAddresses.length} used address(es).`;
+        console.log("Wallet connected:", walletName, api);
+        // 🔜 Next step: build & submit delegation transaction here
+      } catch (err) {
+        console.error("Connection error:", err);
+        document.getElementById("message").textContent = "❌ Failed to connect to wallet.";
+      }
     }
-  }
 
-  document.getElementById("delegateBtn").addEventListener("click", delegateToPool);
-  renderWalletButtons();
-})();
-</script>
+    // Wait for wallets to inject (especially Yoroi)
+    window.addEventListener("load", () => setTimeout(renderWalletButtons, 1200));
+  </script>
+</body>
+</html>
