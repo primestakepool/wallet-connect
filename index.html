@@ -1,169 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Prime Stake Pool | Delegate</title>
-  <link rel="icon" href="data:,">
-  <style>
-    body { font-family: Arial, sans-serif; background:#0a0a0a; color:#eee; text-align:center; padding:40px; }
-    h2 { color:#f4b400; }
-    #wallets { margin-top:25px; }
-    .wallet-btn, .delegate-btn {
-      background:#1e88e5; color:#fff; border:none;
-      padding:12px 20px; margin:6px; border-radius:6px;
-      font-size:16px; cursor:pointer;
-    }
-    .wallet-btn:hover, .delegate-btn:hover { background:#1565c0; }
-    #message { margin-top:25px; font-size:15px; color:#bbb; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cardano Wallet Connect</title>
+<script src="https://cdn.jsdelivr.net/npm/lucid-cardano@0.9.8/dist/lucid.js"></script>
+<style>
+  body { font-family: sans-serif; padding: 20px; }
+  button { margin: 5px; padding: 10px; }
+</style>
 </head>
 <body>
-  <h2>Delegate to Prime Stake Pool</h2>
-  <div id="wallets">Detecting wallets...</div>
-  <div id="message"></div>
-
-  <script>
-    const POOL_ID = "YOUR_POOL_ID_HERE"; // e.g., "pool1z2yx..."
-    const BLOCKFROST_KEY = "YOUR_BLOCKFROST_PROJECT_ID";
-
-    let connectedAPI = null;
-    let connectedWallet = null;
-
-    async function detectWallets() {
-      const wallets = {};
-      if (!window.cardano) {
-        document.getElementById("wallets").innerHTML = 
-          "<p>No Cardano wallet found.<br>Please refresh after unlocking your wallet.</p>";
-        return wallets;
-      }
-      const knownWallets = ["nami", "eternl", "flint", "yoroi", "lace", "gerowallet"];
-      for (const name of knownWallets) {
-        if (window.cardano[name] && typeof window.cardano[name].enable === "function")
-          wallets[name] = window.cardano[name];
-      }
-      console.log("Detected wallets:", Object.keys(wallets));
-      return wallets;
-    }
-
-    async function renderWalletButtons() {
-      const wallets = await detectWallets();
-      const container = document.getElementById("wallets");
-      if (Object.keys(wallets).length === 0) {
-        container.innerHTML = "<p>No wallets detected.</p>";
-        return;
-      }
-      container.innerHTML = "";
-      Object.keys(wallets).forEach(name => {
-        const btn = document.createElement("button");
-        btn.textContent = "Connect " + name.charAt(0).toUpperCase() + name.slice(1);
-        btn.className = "wallet-btn";
-        btn.onclick = async () => connectWallet(wallets[name], name);
-        container.appendChild(btn);
-      });
-    }
-
-    async function connectWallet(walletAPI, walletName) {
-      try {
-        const api = await walletAPI.enable();
-        connectedAPI = api;
-        connectedWallet = walletName;
-        const addr = (await api.getRewardAddresses())[0];
-        document.getElementById("message").innerHTML =
-          `✅ Connected to <b>${walletName}</b>.<br>Reward address:<br>${addr}`;
-        addDelegateButton();
-      } catch (err) {
-        console.error(err);
-        document.getElementById("message").textContent = "❌ Failed to connect to wallet.";
-      }
-    }
-
-    function addDelegateButton() {
-      const btn = document.createElement("button");
-      btn.textContent = "Delegate to Prime Stake Pool";
-      btn.className = "delegate-btn";
-      btn.onclick = delegateToPool;
-      document.getElementById("wallets").innerHTML = "";
-      document.getElementById("wallets").appendChild(btn);
-    }
-
-    async function delegateToPool() {
-      if (!connectedAPI) return alert("Connect wallet first!");
-
-      try {
-        document.getElementById("message").textContent = "Building transaction...";
-
-        // Fetch protocol parameters
-        const p = await fetch("https://cardano-mainnet.blockfrost.io/api/v0/epochs/latest/parameters", {
-          headers: { project_id: BLOCKFROST_KEY }
-        }).then(r => r.json());
-
-        const net = await connectedAPI.getNetworkId();
-        console.log("Network ID:", net);
-
-        const stakeKey = (await connectedAPI.getRewardAddresses())[0];
-        const utxos = await connectedAPI.getUtxos();
-        const txBuilder = await CardanoWasm.TransactionBuilder.new(
-          CardanoWasm.TransactionBuilderConfigBuilder.new()
-            .coins_per_utxo_byte(CardanoWasm.BigNum.from_str(p.coins_per_utxo_byte))
-            .pool_deposit(CardanoWasm.BigNum.from_str(p.pool_deposit))
-            .key_deposit(CardanoWasm.BigNum.from_str(p.key_deposit))
-            .max_value_size(p.max_value_size)
-            .max_tx_size(p.max_tx_size)
-            .build()
-        );
-
-        // Create delegation certificate
-        const stakeKeyHash = CardanoWasm.RewardAddress.from_address(
-          CardanoWasm.Address.from_bech32(stakeKey)
-        ).payment_cred().to_keyhash();
-
-        const cert = CardanoWasm.Certificate.new_stake_delegation(
-          CardanoWasm.StakeDelegation.new(
-            CardanoWasm.StakeCredential.from_keyhash(stakeKeyHash),
-            CardanoWasm.Ed25519KeyHash.from_bech32(POOL_ID)
-          )
-        );
-        const certs = CardanoWasm.Certificates.new();
-        certs.add(cert);
-        txBuilder.set_certs(certs);
-
-        // Build minimal transaction
-        const changeAddr = (await connectedAPI.getChangeAddress());
-        const changeAddress = CardanoWasm.Address.from_bytes(
-          Buffer.from(changeAddr, "hex")
-        );
-        txBuilder.add_change_if_needed(changeAddress);
-
-        const txBody = txBuilder.build();
-        const tx = CardanoWasm.Transaction.new(txBody, CardanoWasm.TransactionWitnessSet.new());
-
-        // Request wallet to sign
-        const signed = await connectedAPI.signTx(Buffer.from(tx.to_bytes()).toString("hex"), true);
-        const signedTx = CardanoWasm.Transaction.from_bytes(Buffer.from(signed, "hex"));
-
-        // Submit
-        const txHash = await connectedAPI.submitTx(Buffer.from(signedTx.to_bytes()).toString("hex"));
-        document.getElementById("message").innerHTML =
-          `✅ Delegation submitted!<br>Tx hash: <code>${txHash}</code>`;
-      } catch (err) {
-        console.error("Delegation failed:", err);
-        document.getElementById("message").innerHTML =
-          "❌ Delegation transaction failed. See console for details.";
-      }
-    }
-
-    // Load Cardano serialization lib (needed to build tx)
-    (function loadWasm() {
-      const script = document.createElement("script");
-      script.src = "https://cdn.jsdelivr.net/npm/@emurgo/cardano-serialization-lib-browser@11.5.0/cardano_serialization_lib.js";
-      script.onload = () => {
-        console.log("Cardano serialization lib loaded.");
-        setTimeout(renderWalletButtons, 1200);
-      };
-      document.head.appendChild(script);
-    })();
-  </script>
+<h2>Delegate your ADA</h2>
+<p id="message">Detecting wallets...</p>
+<div id="wallet-buttons"></div>
+<script type="module" src="main.js"></script>
 </body>
 </html>
 
