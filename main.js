@@ -58,6 +58,7 @@ async function connectWallet(walletName) {
 }
 
 async function main() {
+  console.log("window.cardano:", window.cardano);
   const wallets = await detectWallets();
 
   if (wallets.length === 0) {
