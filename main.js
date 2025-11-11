@@ -69,13 +69,23 @@ function disconnectWallet() {
 }
 
 async function main() {
-  const wallets = await detectWallets();
+  messageEl.textContent = "Detecting wallets...";
+
+  // Wait up to 3 seconds for wallet injection
+  let wallets = [];
+  for (let i = 0; i < 6; i++) {
+    wallets = await detectWallets();
+    if (wallets.length > 0) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+
   if (wallets.length === 0) {
     messageEl.textContent = "No Cardano wallet found. Please unlock or install one.";
     return;
   }
 
   messageEl.textContent = "Select your wallet to delegate:";
+  buttonsContainer.innerHTML = ""; // Clear any previous buttons
 
   wallets.forEach(walletName => {
     const btn = document.createElement("button");
@@ -86,7 +96,8 @@ async function main() {
 
   disconnectBtn.onclick = disconnectWallet;
 
-  console.log("Detected wallets:", wallets);
+  console.log("✅ Detected wallets:", wallets);
 }
+
 
 window.addEventListener("DOMContentLoaded", main);
