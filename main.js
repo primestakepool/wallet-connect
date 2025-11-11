@@ -1,9 +1,9 @@
 // main.js
-import { Lucid, Blockfrost } from "https://unpkg.com/lucid-cardano@0.10.7/web/mod.js";
+import { Lucid, Blockfrost } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.10.7/web/mod.js";
 
 // ------------------ Configuration ------------------
-const BACKEND_URL = "https://wallet-proxy-five.vercel.app/api/epoch-params"; // replace with your deployed backend
-const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy"; // replace with your stake pool ID
+const BACKEND_URL = "https://wallet-proxy-five.vercel.app/api/epoch-params"; // replace with your backend proxy URL
+const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy"; // replace with your pool ID
 // ---------------------------------------------------
 
 const messageEl = document.getElementById("message");
@@ -11,12 +11,10 @@ const buttonsContainer = document.getElementById("wallet-buttons");
 
 async function detectWallets() {
   const wallets = [];
-
   if (window.cardano?.nami) wallets.push("nami");
   if (window.cardano?.yoroi) wallets.push("yoroi");
   if (window.cardano?.lace) wallets.push("lace");
   if (window.cardano?.flint) wallets.push("flint");
-
   return wallets;
 }
 
@@ -26,16 +24,14 @@ async function connectWallet(walletName) {
 
     const walletApi = await window.cardano[walletName].enable();
 
-    // Initialize Lucid
     const lucid = await Lucid.new(
-      new Blockfrost("https://cardano-mainnet.blockfrost.io/api/v0", ""), // empty API key
+      new Blockfrost("https://cardano-mainnet.blockfrost.io/api/v0", ""),
       "Mainnet"
     );
     lucid.selectWallet(walletApi);
 
     messageEl.textContent = `${walletName} connected. Fetching network parameters...`;
 
-    // Get epoch parameters securely from backend
     const epochParams = await fetch(BACKEND_URL).then((r) => r.json());
     if (epochParams.error) {
       messageEl.textContent = "❌ Could not fetch network parameters from backend.";
@@ -82,5 +78,4 @@ async function main() {
   console.log("Detected wallets:", wallets);
 }
 
-// Wait until DOM and wallets are ready
 window.addEventListener("DOMContentLoaded", main);
