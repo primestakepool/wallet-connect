@@ -1,5 +1,5 @@
 // main.js
-import { Lucid, Blockfrost } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.9.8/dist/lucid.js";
+import { Lucid, Blockfrost } from "https://unpkg.com/lucid-cardano@0.10.7/web/mod.js";
 
 // ------------------ Configuration ------------------
 const BACKEND_URL = "https://wallet-proxy-five.vercel.app/api/epoch-params"; // replace with your deployed backend
