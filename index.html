@@ -1,20 +1,51 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cardano Wallet Connect</title>
-<script src="https://cdn.jsdelivr.net/npm/lucid-cardano@0.9.8/dist/lucid.js"></script>
-<style>
-  body { font-family: sans-serif; padding: 20px; }
-  button { margin: 5px; padding: 10px; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cardano Wallet Connect</title>
+
+  <!-- Lucid library (Cardano JS SDK) -->
+  <script type="module" src="https://cdn.jsdelivr.net/npm/lucid-cardano@0.9.8/dist/lucid.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #fafafa;
+      color: #222;
+      padding: 40px;
+      text-align: center;
+    }
+    h2 {
+      color: #0055ff;
+    }
+    button {
+      padding: 10px 16px;
+      margin: 8px;
+      border: none;
+      background: #0055ff;
+      color: #fff;
+      font-size: 15px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0040cc;
+    }
+    #message {
+      margin: 20px 0;
+      font-size: 16px;
+    }
+  </style>
 </head>
+
 <body>
-<h2>Delegate your ADA</h2>
-<p id="message">Detecting wallets...</p>
-<div id="wallet-buttons"></div>
-<script type="module" src="main.js"></script>
+  <h2>Delegate your ADA</h2>
+  <p id="message">Detecting wallets...</p>
+  <div id="wallet-buttons"></div>
+
+  <!-- Main wallet script -->
+  <script type="module" src="main.js"></script>
 </body>
 </html>
 
