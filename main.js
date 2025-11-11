@@ -1,81 +1,69 @@
-// main.js
-import { Lucid, Blockfrost } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.10.7/web/mod.js";
+import { Lucid } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.10.7/web/mod.js";
 
-// ------------------ Configuration ------------------
-const BACKEND_URL = "https://wallet-proxy-five.vercel.app/api/epoch-params"; // replace with your backend proxy URL
-const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy"; // replace with your pool ID
-// ---------------------------------------------------
+// Backend URL (already deployed on Vercel)
+const BACKEND_URL = "https://wallet-proxy-five.vercel.app/api/epoch-params";
 
 const messageEl = document.getElementById("message");
 const buttonsContainer = document.getElementById("wallet-buttons");
 
-async function detectWallets() {
-  const wallets = [];
-  if (window.cardano?.nami) wallets.push("nami");
-  if (window.cardano?.yoroi) wallets.push("yoroi");
-  if (window.cardano?.lace) wallets.push("lace");
-  if (window.cardano?.flint) wallets.push("flint");
-  return wallets;
-}
-
-async function connectWallet(walletName) {
-  try {
-    messageEl.textContent = `Connecting to ${walletName}...`;
-
-    const walletApi = await window.cardano[walletName].enable();
-
-    const lucid = await Lucid.new(
-      new Blockfrost("https://cardano-mainnet.blockfrost.io/api/v0", ""),
-      "Mainnet"
-    );
-    lucid.selectWallet(walletApi);
-
-    messageEl.textContent = `${walletName} connected. Fetching network parameters...`;
-
-    const epochParams = await fetch(BACKEND_URL).then((r) => r.json());
-    if (epochParams.error) {
-      messageEl.textContent = "❌ Could not fetch network parameters from backend.";
-      console.error(epochParams.error);
-      return;
-    }
-
-    messageEl.textContent = "Ready to delegate! Building transaction...";
-
-    const delegationTx = await lucid
-      .newTx()
-      .delegateTo(POOL_ID)
-      .complete();
-
-    const signedTx = await lucid.signTx(delegationTx);
-    const txHash = await lucid.submitTx(signedTx);
-
-    messageEl.textContent = `✅ Delegation submitted! Tx Hash: ${txHash}`;
-    console.log("Transaction hash:", txHash);
-  } catch (err) {
-    console.error("Connection or delegation failed:", err);
-    messageEl.textContent = `⚠️ Error: ${err.message}`;
-  }
-}
-
 async function main() {
-  const wallets = await detectWallets();
+  // Check if Cardano wallets exist
+  if (!window.cardano) {
+    messageEl.textContent = "No Cardano wallet found. Please install Nami, Yoroi, Lace, or Flint.";
+    return;
+  }
 
-  if (wallets.length === 0) {
-    messageEl.textContent =
-      "No Cardano wallet found. Please unlock or install Nami, Yoroi, Lace, or Flint.";
+  const walletNames = Object.keys(window.cardano);
+  if (walletNames.length === 0) {
+    messageEl.textContent = "No Cardano wallet found. Please unlock or install a wallet.";
     return;
   }
 
   messageEl.textContent = "Select your wallet to delegate:";
 
-  wallets.forEach((walletName) => {
+  // Create buttons for each detected wallet
+  walletNames.forEach(walletName => {
     const btn = document.createElement("button");
     btn.textContent = walletName.toUpperCase();
-    btn.onclick = () => connectWallet(walletName);
+
+    btn.onclick = async () => {
+      try {
+        messageEl.textContent = `Connecting to ${walletName}...`;
+        const walletApi = await window.cardano[walletName].enable();
+
+        // Fetch epoch parameters from your backend
+        const epochParamsRes = await fetch(BACKEND_URL);
+        const epochParams = await epochParamsRes.json();
+
+        // Initialize Lucid with the wallet API and epoch params
+        const lucid = await Lucid.new(undefined, "Mainnet"); // Using undefined provider; backend will handle Blockfrost
+        lucid.selectWallet(walletApi);
+
+        messageEl.textContent = `${walletName} connected! Epoch params loaded.`;
+        console.log("Wallet API:", walletApi);
+        console.log("Epoch params from backend:", epochParams);
+
+        // Here you can proceed to build your transaction and delegate
+        // For example:
+        // const tx = await lucid.buildTx({...});
+        // const signedTx = await lucid.signTx(tx);
+        // const txHash = await lucid.submitTx(signedTx);
+
+      } catch (err) {
+        console.error(err);
+        messageEl.textContent = `Failed to connect ${walletName}: ${err.message}`;
+      }
+    };
+
     buttonsContainer.appendChild(btn);
   });
 
-  console.log("Detected wallets:", wallets);
+  console.log("Detected wallets:", walletNames);
 }
 
-window.addEventListener("DOMContentLoaded", main);
+// Run main once DOM is ready
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", main);
+} else {
+  main();
+}
