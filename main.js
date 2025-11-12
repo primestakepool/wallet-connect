@@ -3,7 +3,7 @@ import { Lucid, Blockfrost } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.
 // ----------------------------------
 // CONFIG
 // ----------------------------------
-const BACKEND_URL = "https://wallet-proxy-five.vercel.app/api/epoch-params";
+const BACKEND_URL = "https://wallet-proxy-alpha.vercel.app/api/epoch-params";
 const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy";
 
 // ----------------------------------
