@@ -1,14 +1,15 @@
-import { Lucid } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.10.7/browser/mod.js";
+// main.js
+import { Lucid } from "https://unpkg.com/lucid-cardano@0.10.11/web/mod.js";
 
-// ----------------------------------
+// ----------------------
 // CONFIG
-// ----------------------------------
+// ----------------------
 const BACKEND_URL = "https://wallet-proxy-pi.vercel.app/api/epoch-params";
-const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy"; // 👈 your pool id
+const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy";
 
-// ----------------------------------
+// ----------------------
 // DOM ELEMENTS
-// ----------------------------------
+// ----------------------
 const messageEl = document.getElementById("message");
 const buttonsContainer = document.getElementById("wallet-buttons");
 
@@ -16,9 +17,9 @@ let lucid;
 let walletApi;
 let connectedWallet;
 
-// ----------------------------------
+// ----------------------
 // MAIN
-// ----------------------------------
+// ----------------------
 async function main() {
   messageEl.textContent = "Detecting wallets…";
 
@@ -27,7 +28,7 @@ async function main() {
     return;
   }
 
-  const walletNames = Object.keys(window.cardano || {});
+  const walletNames = Object.keys(window.cardano);
   if (walletNames.length === 0) {
     messageEl.textContent = "No Cardano wallet found. Please unlock or install a wallet.";
     return;
@@ -46,26 +47,23 @@ async function main() {
   console.log("Detected wallets:", walletNames);
 }
 
-// ----------------------------------
+// ----------------------
 // CONNECT WALLET
-// ----------------------------------
+// ----------------------
 async function connectWallet(name) {
   try {
     messageEl.textContent = `Connecting to ${name}…`;
+
     walletApi = await window.cardano[name].enable();
     connectedWallet = name;
 
-    // Get epoch / protocol parameters from backend
-    const paramsRes = await fetch(BACKEND_URL);
-    if (!paramsRes.ok) throw new Error(`Backend fetch failed: ${paramsRes.status}`);
-    const protocolParams = await paramsRes.json();
+    // Fetch protocol parameters from backend
+    const protocolParams = await fetch(BACKEND_URL).then(r => r.json());
 
-    // Initialize Lucid (Web version)
+    // Initialize Lucid with fetched protocol parameters
     lucid = await Lucid.new(undefined, "Mainnet");
     lucid.selectWallet(walletApi);
-
-    // Set protocol parameters internally
-    lucid._protocolParameters = protocolParams;
+    lucid._setProtocolParams(protocolParams); // internally set parameters
 
     const address = await lucid.wallet.address();
     messageEl.textContent = `✅ ${name.toUpperCase()} connected`;
@@ -80,9 +78,9 @@ async function connectWallet(name) {
   }
 }
 
-// ----------------------------------
-// ADD "DELEGATE NOW" BUTTON
-// ----------------------------------
+// ----------------------
+// SHOW DELEGATE BUTTON
+// ----------------------
 function showDelegateButton(address) {
   const delegateBtn = document.createElement("button");
   delegateBtn.textContent = "Delegate Now";
@@ -91,13 +89,14 @@ function showDelegateButton(address) {
   buttonsContainer.appendChild(delegateBtn);
 }
 
-// ----------------------------------
-// DELEGATION LOGIC
-// ----------------------------------
+// ----------------------
+// DELEGATE TO POOL
+// ----------------------
 async function delegateToPool(address) {
   try {
     messageEl.textContent = "Building delegation transaction…";
 
+    // Build delegation transaction
     const tx = await lucid.newTx()
       .delegateTo(address, POOL_ID)
       .complete();
@@ -116,7 +115,7 @@ async function delegateToPool(address) {
   }
 }
 
-// ----------------------------------
+// ----------------------
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", main);
 } else {
