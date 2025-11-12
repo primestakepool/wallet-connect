@@ -1,22 +1,87 @@
 import { Lucid, Blockfrost } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.10.7/web/mod.js";
 
+// ----------------------
+// CONFIG
+// ----------------------
 const BACKEND_PROXY = "https://wallet-proxy-pi.vercel.app/api/blockfrost-proxy";
 const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy";
 
+// ----------------------
+// DOM ELEMENTS
+// ----------------------
+const messageEl = document.getElementById("message");
+const buttonsContainer = document.getElementById("wallet-buttons");
+
 let lucid, walletApi, connectedWallet;
 
+// ----------------------
+// ROBUST WALLET DETECTION
+// ----------------------
+async function detectWallets(timeout = 5000, interval = 200) {
+  messageEl.textContent = "Detecting wallets…";
+
+  const start = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      if (window.cardano) {
+        const walletNames = Object.keys(window.cardano);
+        if (walletNames.length > 0) {
+          messageEl.textContent = "Select your wallet to delegate:";
+          resolve(walletNames);
+          return;
+        }
+      }
+
+      if (Date.now() - start > timeout) {
+        reject(new Error("No Cardano wallets detected. Make sure the wallet is installed and unlocked."));
+        return;
+      }
+
+      setTimeout(check, interval);
+    };
+
+    check();
+  });
+}
+
+// ----------------------
+// MAIN
+// ----------------------
+async function main() {
+  try {
+    const walletNames = await detectWallets();
+
+    buttonsContainer.innerHTML = "";
+
+    walletNames.forEach(name => {
+      const btn = document.createElement("button");
+      btn.textContent = name.toUpperCase();
+      btn.onclick = () => connectWallet(name);
+      buttonsContainer.appendChild(btn);
+    });
+
+    console.log("Detected wallets:", walletNames);
+  } catch (err) {
+    console.error(err);
+    messageEl.textContent = `❌ ${err.message}`;
+  }
+}
+
+// ----------------------
+// CONNECT WALLET
+// ----------------------
 async function connectWallet(name) {
   try {
     messageEl.textContent = `Connecting to ${name}…`;
     walletApi = await window.cardano[name].enable();
     connectedWallet = name;
 
-    // ✅ Initialize Lucid using backend proxy
+    // Initialize Lucid using backend proxy (no API key exposed)
     lucid = await Lucid.new(
-      new Blockfrost(BACKEND_PROXY, ""), // empty key; backend adds it
+      new Blockfrost(BACKEND_PROXY, ""), 
       "Mainnet"
     );
-
     lucid.selectWallet(walletApi);
 
     const address = await lucid.wallet.address();
@@ -30,7 +95,20 @@ async function connectWallet(name) {
   }
 }
 
-// Delegation function stays the same
+// ----------------------
+// ADD "DELEGATE NOW" BUTTON
+// ----------------------
+function showDelegateButton(address) {
+  const delegateBtn = document.createElement("button");
+  delegateBtn.textContent = "Delegate Now";
+  delegateBtn.style.cssText = "display:block;margin-top:20px;padding:10px 25px;font-size:16px;";
+  delegateBtn.onclick = () => delegateToPool(address);
+  buttonsContainer.appendChild(delegateBtn);
+}
+
+// ----------------------
+// DELEGATION LOGIC
+// ----------------------
 async function delegateToPool(address) {
   try {
     messageEl.textContent = "Building delegation transaction…";
@@ -51,4 +129,13 @@ async function delegateToPool(address) {
     console.error("Delegation error:", err);
     messageEl.textContent = `❌ Delegation failed: ${err.message}`;
   }
+}
+
+// ----------------------
+// INIT
+// ----------------------
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", main);
+} else {
+  main();
 }
