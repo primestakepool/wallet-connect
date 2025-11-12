@@ -17,31 +17,31 @@ let lucid, walletApi, connectedWallet;
 // ----------------------
 // ROBUST WALLET DETECTION
 // ----------------------
-async function detectWallets(timeout = 5000, interval = 200) {
+async function detectWallets() {
   messageEl.textContent = "Detecting wallets…";
 
-  const start = Date.now();
+  // Synchronous check first
+  if (window.cardano && Object.keys(window.cardano).length > 0) {
+    const walletNames = Object.keys(window.cardano);
+    messageEl.textContent = "Select your wallet to delegate:";
+    return walletNames;
+  }
 
+  // Fallback: poll for wallet injection
   return new Promise((resolve, reject) => {
-    const check = () => {
-      if (window.cardano) {
+    const start = Date.now();
+    const timeout = 5000; // 5 seconds
+    const interval = setInterval(() => {
+      if (window.cardano && Object.keys(window.cardano).length > 0) {
+        clearInterval(interval);
         const walletNames = Object.keys(window.cardano);
-        if (walletNames.length > 0) {
-          messageEl.textContent = "Select your wallet to delegate:";
-          resolve(walletNames);
-          return;
-        }
-      }
-
-      if (Date.now() - start > timeout) {
+        messageEl.textContent = "Select your wallet to delegate:";
+        resolve(walletNames);
+      } else if (Date.now() - start > timeout) {
+        clearInterval(interval);
         reject(new Error("No Cardano wallets detected. Make sure the wallet is installed and unlocked."));
-        return;
       }
-
-      setTimeout(check, interval);
-    };
-
-    check();
+    }, 200);
   });
 }
 
