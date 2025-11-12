@@ -1,4 +1,4 @@
-import { Lucid, TransactionBuilderConfigBuilder } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.10.7/web/mod.js";
+import { Lucid } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.10.7/web/mod.js";
 
 // ----------------------------------
 // CONFIG
@@ -55,27 +55,17 @@ async function connectWallet(name) {
     walletApi = await window.cardano[name].enable();
     connectedWallet = name;
 
-    // Fetch epoch / protocol parameters from backend
+    // Get epoch / protocol parameters from backend
     const paramsRes = await fetch(BACKEND_URL);
-    if (!paramsRes.ok) throw new Error("Backend fetch failed");
+    if (!paramsRes.ok) throw new Error(`Backend fetch failed: ${paramsRes.status}`);
     const protocolParams = await paramsRes.json();
 
-    // Initialize Lucid
+    // Initialize Lucid (Web version)
     lucid = await Lucid.new(undefined, "Mainnet");
     lucid.selectWallet(walletApi);
 
-    // Build TransactionBuilderConfig
-    const txBuilderConfig = TransactionBuilderConfigBuilder.new()
-      .fee_algo_min(protocolParams.min_fee_a)
-      .fee_algo_constant(protocolParams.min_fee_b)
-      .pool_deposit(protocolParams.pool_deposit)
-      .key_deposit(protocolParams.key_deposit)
-      .max_tx_size(protocolParams.max_tx_size)
-      .max_value_size(protocolParams.max_val_size)
-      .coins_per_utxo_word(protocolParams.coins_per_utxo_word)
-      .build();
-
-    lucid._txBuilderConfig = txBuilderConfig;
+    // Set protocol parameters internally
+    lucid._protocolParameters = protocolParams;
 
     const address = await lucid.wallet.address();
     messageEl.textContent = `✅ ${name.toUpperCase()} connected`;
@@ -108,12 +98,12 @@ async function delegateToPool(address) {
   try {
     messageEl.textContent = "Building delegation transaction…";
 
-    const delegation = await lucid.newTx()
+    const tx = await lucid.newTx()
       .delegateTo(address, POOL_ID)
       .complete();
 
     messageEl.textContent = "Signing transaction…";
-    const signedTx = await delegation.sign().complete();
+    const signedTx = await tx.sign().complete();
 
     messageEl.textContent = "Submitting to network…";
     const txHash = await signedTx.submit();
