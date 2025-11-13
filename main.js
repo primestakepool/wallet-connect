@@ -1,32 +1,53 @@
 // main.js
-const backendBaseUrl = "https://cardano-wallet-backend.vercel.app/api";
+const BACKEND_URL = "https://cardano-wallet-backend.vercel.app/api";
 
-const walletButtonsContainer = document.getElementById("wallet-buttons");
-const delegateSection = document.getElementById("delegate-section");
+let wallet = null;
+let walletName = null;
+let userAddress = null;
+
 const message = document.getElementById("message");
+const walletButtonsDiv = document.getElementById("wallet-buttons");
+const delegateSection = document.getElementById("delegate-section");
 
-let wallet; // Yoroi wallet instance
-let userAddress; // Bech32 address
+// List of supported wallets
+const SUPPORTED_WALLETS = ["yoroi", "nami", "flint", "eternl", "gerowallet"];
 
-// 1️⃣ Detect wallets
 function detectWallets() {
-  walletButtonsContainer.innerHTML = ""; // Clear previous buttons
+  walletButtonsDiv.innerHTML = "";
+  const detectedWallets = [];
 
-  if (window.cardano?.yoroi) {
-    const btn = document.createElement("button");
-    btn.innerText = "Connect Yoroi Wallet";
-    btn.onclick = connectWallet;
-    walletButtonsContainer.appendChild(btn);
-    message.innerText = "Yoroi wallet detected. Connect to continue.";
-  } else {
-    message.innerHTML = 'No Yoroi wallet found. Please install it from <a href="https://yoroi-wallet.com/">here</a>.';
+  SUPPORTED_WALLETS.forEach(name => {
+    if (window.cardano?.[name]) detectedWallets.push(name);
+  });
+
+  if (detectedWallets.length === 0) {
+    message.innerHTML = 'No supported wallets found. Install one of these: <a href="https://yoroi-wallet.com/">Yoroi</a>, <a href="https://namiwallet.io/">Nami</a>.';
+    return;
   }
+
+  message.innerText = "Select a wallet to connect:";
+
+  detectedWallets.forEach(name => {
+    const btn = document.createElement("button");
+    btn.innerText = name.charAt(0).toUpperCase() + name.slice(1);
+    btn.onclick = () => connectWallet(name);
+    walletButtonsDiv.appendChild(btn);
+  });
 }
 
-// 2️⃣ Connect Yoroi Wallet
-async function connectWallet() {
+async function connectWallet(name) {
+  if (!window.cardano?.[name]) {
+    message.innerText = `${name} wallet not found!`;
+    return;
+  }
+
   try {
-    wallet = await window.cardano.yoroi.enable();
+    wallet = await window.cardano[name].enable();
+    walletName = name;
+
+    // Small delay to ensure the wallet is ready
+    await new Promise(resolve => setTimeout(resolve, 300));
+
     const usedAddresses = await wallet.getUsedAddresses();
 
     if (!usedAddresses || usedAddresses.length === 0) {
@@ -34,79 +55,73 @@ async function connectWallet() {
       return;
     }
 
-    userAddress = usedAddresses[0]; // Using the first used address
-    message.innerText = `✅ Wallet connected: ${userAddress.slice(0, 10)}...`;
+    userAddress = usedAddresses[0];
+    message.innerText = `✅ Connected: ${userAddress.slice(0, 10)}...`;
     showDelegateButton();
+
   } catch (err) {
-    console.error(err);
-    message.innerText = "❌ Failed to connect wallet: " + err.message;
+    console.error(`Failed to connect ${name} wallet:`, err);
+    message.innerText = `❌ Could not connect ${name}. Make sure you approve the connection in the wallet.`;
   }
 }
 
-// 3️⃣ Show delegate button
 function showDelegateButton() {
   delegateSection.innerHTML = "";
-
   const btn = document.createElement("button");
+  btn.innerText = "Delegate ADA to PSP";
   btn.className = "delegate-btn";
-  btn.innerText = "Fetch My UTXOs";
-  btn.onclick = fetchUtxos;
+  btn.onclick = submitDelegation;
   delegateSection.appendChild(btn);
 }
 
-// 4️⃣ Fetch UTXOs via backend
-async function fetchUtxos() {
-  if (!userAddress) {
-    message.innerText = "⚠️ Connect wallet first.";
+async function submitDelegation() {
+  if (!wallet || !userAddress) {
+    message.innerText = "Wallet not connected!";
     return;
   }
 
-  message.innerText = "Fetching UTXOs...";
   try {
-    const res = await fetch(`${backendBaseUrl}/utxos/${userAddress}`);
-    const utxos = await res.json();
+    message.innerText = "Preparing transaction...";
 
-    console.log("UTXOs:", utxos);
-    message.innerText = `✅ UTXOs fetched: ${utxos.length} found.`;
-    
-    // Optionally, show a submit transaction button
-    showSubmitButton(utxos);
-  } catch (err) {
-    console.error(err);
-    message.innerText = "❌ Failed to fetch UTXOs: " + err.message;
-  }
-}
+    // Fetch UTXOs from your backend
+    const utxoResp = await fetch(`${BACKEND_URL}/utxos?address=${userAddress}`);
+    const utxos = await utxoResp.json();
 
-// 5️⃣ Show submit transaction button
-function showSubmitButton(utxos) {
-  const btn = document.createElement("button");
-  btn.className = "delegate-btn";
-  btn.innerText = "Submit Dummy Transaction";
-  btn.onclick = async () => {
-    const txCborHex = prompt("Enter transaction CBOR hex (for testing):");
-    if (txCborHex) {
-      await submitTx(txCborHex);
+    if (!utxos || utxos.length === 0) {
+      message.innerText = "No UTXOs found for this address.";
+      return;
     }
-  };
 
-  delegateSection.appendChild(btn);
-}
+    // Fetch protocol params
+    const paramsResp = await fetch(`${BACKEND_URL}/epoch-params`);
+    const protocolParams = await paramsResp.json();
 
-// 6️⃣ Submit transaction via backend
-async function submitTx(txCborHex) {
-  try {
-    const res = await fetch(`${backendBaseUrl}/submit`, {
+    // Build transaction payload for backend
+    const txPayload = {
+      address: userAddress,
+      utxos,
+      protocolParams,
+      stakePool: "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy" // replace with your pool ID
+    };
+
+    // Send to backend to construct & submit transaction
+    const submitResp = await fetch(`${BACKEND_URL}/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ txCbor: txCborHex })
+      body: JSON.stringify(txPayload)
     });
 
-    const result = await res.json();
-    console.log("Transaction submission result:", result);
-    message.innerText = `✅ Transaction submitted. Tx ID: ${result.txId || "unknown"}`;
+    const result = await submitResp.json();
+
+    if (result.success) {
+      message.innerText = `🎉 Delegation successful! Tx Hash: ${result.txHash}`;
+    } else {
+      message.innerText = `❌ Delegation failed: ${result.error || "Unknown error"}`;
+    }
+
   } catch (err) {
-    console.error(err);
-    message.innerText = "❌ Failed to submit transaction: " + err.message;
+    console.error("Delegation error:", err);
+    message.innerText = "❌ An error occurred during delegation. Check console.";
   }
 }
 
