@@ -1,3 +1,8 @@
+if (!window.Cardano) {
+  console.error("Cardano serialization lib not loaded!");
+  document.getElementById("message").textContent = "⚠️ Serialization library not loaded!";
+}
+
 const API_BASE = "https://cardano-wallet-backend.vercel.app/api/";
 
 const messageEl = document.getElementById("message");
