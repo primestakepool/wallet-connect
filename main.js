@@ -9,20 +9,29 @@ let selectedWallet = null;
 let walletApi = null;
 let bech32Address = null;
 
-// Utility: wait
+// Utility sleep
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
-// Wait for wallets to inject
+// Wait for Cardano serialization lib to be loaded
+async function waitForCardano() {
+  while (!window.Cardano) {
+    await sleep(100);
+  }
+  console.log("Cardano lib ready!");
+}
+
+// Detect wallets
 async function detectWallets() {
+  await waitForCardano();
   messageEl.textContent = "🔍 Detecting wallets...";
+  
   for (let i = 0; i < 10; i++) {
     if (window.cardano && Object.keys(window.cardano).length > 0) break;
     await sleep(500);
   }
 
-  if (!window.cardano) {
-    messageEl.textContent =
-      "⚠️ No Cardano wallets detected. Install Nami, Eternl, Yoroi, or Lace.";
+  if (!window.cardano || Object.keys(window.cardano).length === 0) {
+    messageEl.textContent = "⚠️ No Cardano wallets detected. Install Nami, Eternl, Yoroi, or Lace.";
     return;
   }
 
@@ -42,10 +51,9 @@ function renderWalletButtons() {
     }
   });
 
-  messageEl.textContent =
-    walletButtonsDiv.innerHTML === "" 
-      ? "⚠️ No supported wallets found." 
-      : "💡 Select your Cardano wallet to connect:";
+  messageEl.textContent = walletButtonsDiv.innerHTML
+    ? "💡 Select your Cardano wallet to connect:"
+    : "⚠️ No supported wallets found.";
 }
 
 // Connect to wallet
@@ -59,15 +67,11 @@ async function connectWallet(walletName) {
     walletApi = await wallet.enable();
     selectedWallet = walletName;
 
-    // Get address
     const usedAddresses = await walletApi.getUsedAddresses();
-    if (!usedAddresses || usedAddresses.length === 0)
-      throw new Error("No used addresses found");
+    if (!usedAddresses || usedAddresses.length === 0) throw new Error("No used addresses found");
 
     const addrHex = usedAddresses[0];
-    const addrBytes = Cardano.Address.from_bytes(
-      Buffer.from(addrHex, "hex")
-    );
+    const addrBytes = Cardano.Address.from_bytes(Buffer.from(addrHex, "hex"));
     bech32Address = addrBytes.to_bech32();
 
     messageEl.textContent = `✅ Wallet connected: ${bech32Address.substring(0, 15)}...`;
@@ -124,14 +128,5 @@ async function submitDelegation() {
   }
 }
 
-// Start app after page + Cardano lib loaded
-window.addEventListener("load", () => {
-  if (!window.Cardano) {
-    messageEl.textContent = "⚠️ Cardano lib not loaded!";
-    return;
-  }
-  detectWallets();
-});
-
-  
-    
+// Start app
+window.addEventListener("load", () => detectWallets());
