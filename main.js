@@ -1,7 +1,7 @@
 import { Lucid } from "https://cdn.jsdelivr.net/npm/lucid-cardano@0.10.7/web/mod.js";
 
 // 🔹 Your backend root
-const BACKEND_ROOT = "https://wallet-proxy-pi.vercel.app/api/api";
+const BACKEND_ROOT = "https://wallet-proxy-pi.vercel.app/api";
 
 let lucid;
 let wallet;
