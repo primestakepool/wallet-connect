@@ -103,7 +103,11 @@
   <div class="footer">
     <p>Powered by <a href="https://primestakepool.com/" target="_blank">Prime Stake Pool</a></p>
   </div>
-  <script src="https://unpkg.com/@emurgo/cardano-serialization-lib-browser@11.1.0/cardano_serialization_lib.min.js"></script>
+   <!-- Cardano Serialization Library -->
+  <script type="module">
+    import * as Cardano from "https://cdn.jsdelivr.net/npm/@emurgo/cardano-serialization-lib-browser@11.1.0/dist/cardano_serialization_lib.js";
+    window.Cardano = Cardano; // make global for main.js
+  </script>
   <script type="module" src="main.js"></script>
 </body>
 </html>
