@@ -105,11 +105,15 @@
     <p>Powered by <a href="https://primestakepool.com/" target="_blank">Prime Stake Pool</a></p>
   </div>
    <!-- Cardano Serialization Library -->
-  <script type="module">
-  import * as Cardano from "https://cdn.jsdelivr.net/npm/@emurgo/cardano-serialization-lib-browser@15.0.1/cardano_serialization_lib.min.js";
-  window.Cardano = Cardano;
-  console.log("Cardano serialization lib loaded:", Cardano);
-</script>
+   <script type="module">
+    import initWasm, * as Cardano from "./libs/cardano_serialization_lib.min.js";
+
+    // Initialize WASM and make it globally available
+    await initWasm();
+    window.Cardano = Cardano;
+
+    console.log("✅ Cardano serialization lib initialized:", Cardano);
+  </script>
 
   <script type="module" src="main.js"></script>
 </body>
