@@ -1,156 +1,139 @@
-// ==============================
-// CONFIGURATION
-// ==============================
-const BACKEND_API = "https://cardano-wallet-backend.vercel.app/api";
-const POOL_ID = "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy"; // <-- replace with your actual pool ID
+const API_BASE = "https://cardano-wallet-backend.vercel.app/api/";
 
-// ==============================
-// GLOBAL STATE
-// ==============================
-let selectedWalletApi = null;
+const messageEl = document.getElementById("message");
+const walletButtonsDiv = document.getElementById("wallet-buttons");
+const delegateSection = document.getElementById("delegate-section");
+
+const SUPPORTED_WALLETS = ["nami", "eternl", "yoroi", "lace"];
+let selectedWallet = null;
+let walletApi = null;
 let bech32Address = null;
-let protocolParams = null;
 
-// ==============================
-// HELPER FUNCTIONS
-// ==============================
+// Utility: wait
+const sleep = ms => new Promise(res => setTimeout(res, ms));
 
-// Convert wallet hex address to bech32 (addr1...)
-function hexToBech32(hex) {
-  if (!window.Cardano) throw new Error("Cardano lib not loaded");
-  const bytes = window.Cardano.HexBlob.fromBytes(Buffer.from(hex, "hex"));
-  const addr = window.Cardano.Address.from_bytes(bytes);
-  return addr.to_bech32();
-}
-
-function setMessage(msg) {
-  document.getElementById("message").innerText = msg;
-  console.log(msg);
-}
-
-// Fetch epoch parameters from backend
-async function fetchProtocolParams() {
-  const res = await fetch(`${BACKEND_API}/epoch-params`);
-  if (!res.ok) throw new Error("Failed to fetch epoch parameters");
-  return await res.json();
-}
-
-// Fetch UTXOs from backend
-async function fetchUTXOs(address) {
-  const res = await fetch(`${BACKEND_API}/utxos?address=${address}`);
-  if (!res.ok) throw new Error("UTxO fetch failed");
-  return await res.json();
-}
-
-// Submit transaction to backend
-async function submitTx(txCborHex) {
-  const res = await fetch(`${BACKEND_API}/submit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tx: txCborHex })
-  });
-  if (!res.ok) throw new Error("TX submit failed");
-  return await res.json();
-}
-
-// ==============================
-// WALLET CONNECTION
-// ==============================
-
-async function connectWallet(walletKey) {
-  try {
-    if (!window.cardano || !window.cardano[walletKey]) {
-      throw new Error(`${walletKey} wallet not found`);
-    }
-
-    setMessage(`Connecting to ${walletKey}...`);
-    const wallet = window.cardano[walletKey];
-    await wallet.enable();
-    selectedWalletApi = await wallet.enable();
-
-    // Fetch first address
-    const usedAddresses = await selectedWalletApi.getUsedAddresses();
-    if (!usedAddresses.length) throw new Error("No used addresses found");
-
-    const addressHex = usedAddresses[0];
-    const addrBytes = window.Cardano.Address.from_bytes(
-      window.Cardano.HexBlob.fromBytes(Buffer.from(addressHex, "hex"))
-    );
-    bech32Address = addrBytes.to_bech32();
-
-    setMessage(`✅ Connected: ${bech32Address}`);
-
-    protocolParams = await fetchProtocolParams();
-
-    // Show delegate button
-    const delegateDiv = document.getElementById("delegate-section");
-    delegateDiv.innerHTML = `<button class="delegate-btn" id="delegate-btn">Delegate to PSP</button>`;
-    document.getElementById("delegate-btn").onclick = submitDelegation;
-
-  } catch (err) {
-    console.error("Wallet connection error:", err);
-    setMessage(`❌ Wallet connection failed: ${err.message}`);
+// ✅ Wait for wallets to inject
+async function detectWallets() {
+  messageEl.textContent = "🔍 Detecting wallets...";
+  for (let i = 0; i < 10; i++) {
+    if (window.cardano && Object.keys(window.cardano).length > 0) break;
+    await sleep(500);
   }
-}
 
-// ==============================
-// DELEGATION LOGIC
-// ==============================
-
-async function submitDelegation() {
-  try {
-    setMessage("Building delegation transaction...");
-
-    const utxos = await fetchUTXOs(bech32Address);
-    console.log("UTXOs:", utxos);
-
-    // Simplified delegation TX build
-    const txBuilder = window.Cardano.TransactionBuilder.new();
-    // Normally, you'd construct tx inputs, outputs, certs here with Cardano lib.
-    // (simplified for demo — backend handles real TX building)
-
-    const txBody = txBuilder.build();
-    const txBodyCbor = Buffer.from(txBody.to_bytes()).toString("hex");
-
-    // Let wallet sign
-    const signedTx = await selectedWalletApi.signTx(txBodyCbor, true);
-    const signedTxCbor = Buffer.from(signedTx, "hex").toString("hex");
-
-    const submitResult = await submitTx(signedTxCbor);
-    console.log("TX submitted:", submitResult);
-
-    setMessage(`✅ Delegation transaction submitted successfully!`);
-  } catch (err) {
-    console.error("Delegation error:", err);
-    setMessage(`❌ Delegation failed: ${err.message}`);
-  }
-}
-
-// ==============================
-// INIT UI
-// ==============================
-window.addEventListener("DOMContentLoaded", () => {
-  const walletButtonsDiv = document.getElementById("wallet-buttons");
-  if (!walletButtonsDiv) {
-    console.error("Wallet button container missing");
+  if (!window.cardano) {
+    messageEl.textContent =
+      "⚠️ No Cardano wallets detected. Install Nami, Eternl, Yoroi, or Lace.";
     return;
   }
 
-  const wallets = [
-    { name: "Nami", key: "nami" },
-    { name: "Eternl", key: "eternl" },
-    { name: "Yoroi", key: "yoroi" },
-    { name: "Lace", key: "lace" }
-  ];
+  renderWalletButtons();
+}
 
-  walletButtonsDiv.innerHTML = wallets
-    .map(w => `<button id="${w.key}-btn">${w.name}</button>`)
-    .join("");
-
-  wallets.forEach(w => {
-    const btn = document.getElementById(`${w.key}-btn`);
-    if (btn) btn.onclick = () => connectWallet(w.key);
+// ✅ Render wallet buttons
+function renderWalletButtons() {
+  walletButtonsDiv.innerHTML = "";
+  SUPPORTED_WALLETS.forEach(name => {
+    const wallet = window.cardano[name];
+    if (wallet) {
+      const btn = document.createElement("button");
+      btn.textContent = `Connect ${wallet.name || name}`;
+      btn.onclick = () => connectWallet(name);
+      walletButtonsDiv.appendChild(btn);
+    }
   });
 
-  setMessage("💡 Select your Cardano wallet to connect");
-});
+  if (walletButtonsDiv.innerHTML === "") {
+    messageEl.textContent = "⚠️ No supported wallets found.";
+  } else {
+    messageEl.textContent = "💡 Select your Cardano wallet to connect:";
+  }
+}
+
+// ✅ Connect to wallet
+async function connectWallet(walletName) {
+  try {
+    messageEl.textContent = `🔌 Connecting to ${walletName}...`;
+
+    const wallet = window.cardano[walletName];
+    if (!wallet) throw new Error(`${walletName} not found`);
+
+    await wallet.enable();
+    walletApi = await wallet.enable();
+    selectedWallet = walletName;
+
+    messageEl.textContent = `✅ Connected: ${walletName}`;
+
+    // Get address
+    const usedAddresses = await walletApi.getUsedAddresses();
+    if (!usedAddresses || usedAddresses.length === 0)
+      throw new Error("No used addresses found");
+
+    const addrHex = usedAddresses[0];
+    const addrBytes = Cardano.Address.from_bytes(
+      Buffer.from(addrHex, "hex")
+    );
+    bech32Address = addrBytes.to_bech32();
+
+    messageEl.textContent = `✅ Wallet connected: ${bech32Address.substring(0, 15)}...`;
+    console.log("Bech32 Address:", bech32Address);
+
+    showDelegateButton();
+  } catch (err) {
+    console.error("Wallet connection error:", err);
+    messageEl.textContent = `❌ Wallet connection failed: ${err.message}`;
+  }
+}
+
+// ✅ Show delegate button
+function showDelegateButton() {
+  delegateSection.innerHTML = "";
+  const btn = document.createElement("button");
+  btn.className = "delegate-btn";
+  btn.textContent = "Delegate to PSP Pool";
+  btn.onclick = submitDelegation;
+  delegateSection.appendChild(btn);
+}
+
+// ✅ Call backend for delegation
+async function submitDelegation() {
+  try {
+    messageEl.textContent = "⏳ Preparing delegation transaction...";
+
+    // Fetch UTxOs
+    const utxosRes = await fetch(`${API_BASE}utxos?address=${bech32Address}`);
+    if (!utxosRes.ok) throw new Error(`UTxO fetch failed: ${utxosRes.status}`);
+    const utxos = await utxosRes.json();
+
+    // Get current epoch params
+    const paramsRes = await fetch(`${API_BASE}epoch-params`);
+    const params = await paramsRes.json();
+
+    console.log("Fetched backend data", { utxos, params });
+
+    // Create transaction (you can modify this later)
+    const txBody = {
+      address: bech32Address,
+      poolId: "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy", // replace with your PSP pool id
+    };
+
+    // Send to backend for transaction building
+    const submitRes = await fetch(`${API_BASE}submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(txBody),
+    });
+
+    const result = await submitRes.json();
+
+    if (!submitRes.ok) throw new Error(result.error || "Transaction failed");
+
+    messageEl.textContent = `🎉 Delegation submitted! TxHash: ${result.txHash}`;
+    console.log("Delegation success:", result);
+  } catch (err) {
+    console.error("Delegation error:", err);
+    messageEl.textContent = `❌ Delegation failed: ${err.message}`;
+  }
+}
+
+// Start app
+detectWallets();
