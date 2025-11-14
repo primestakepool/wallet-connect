@@ -1,93 +1,97 @@
-// ----------------------------------------------------------
-// STOP running inside the Yoroi iframe
-// ----------------------------------------------------------
-if (window.location.pathname.includes("wallet-connect")) {
-  console.warn("⛔ Blocking script execution inside Yoroi iframe");
-  throw new Error("Stop execution in injected iframe");
-}
-
-// Safety checks
+// ================ CHECK CSL =======================
 if (!window.Cardano) {
-  console.error("CSL NOT LOADED!");
-  document.getElementById("message").innerText =
+  console.error("❌ CSL NOT LOADED!");
+  document.getElementById("message").textContent =
     "⚠️ Serialization library not loaded!";
+} else {
+  console.log("✅ CSL Loaded:", window.Cardano);
 }
 
-// API backend
 const API_BASE = "https://cardano-wallet-backend.vercel.app/api/";
 
 const messageEl = document.getElementById("message");
 const walletButtonsDiv = document.getElementById("wallet-buttons");
 const delegateSection = document.getElementById("delegate-section");
 
-const SUPPORTED = ["nami", "eternl", "yoroi", "lace"];
+const SUPPORTED_WALLETS = ["nami", "eternl", "yoroi", "lace"];
+let selectedWallet = null;
 let walletApi = null;
 let bech32Address = null;
 
-// Wait helper
+// Small sleep helper
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
-// Detect wallets
+
+// ================ WALLET DETECTION =======================
 async function detectWallets() {
   messageEl.textContent = "🔍 Detecting wallets...";
 
-  for (let i = 0; i < 10; i++) {
-    if (window.cardano && Object.keys(window.cardano).length > 0) break;
+  let attempts = 0;
+  while (attempts < 20) {
+    if (window.cardano && Object.keys(window.cardano).length > 0) {
+      console.log("Wallets detected:", window.cardano);
+      break;
+    }
     await sleep(300);
+    attempts++;
   }
 
-  if (!window.cardano) {
-    messageEl.textContent = "⚠️ No Cardano wallets found.";
+  if (!window.cardano || Object.keys(window.cardano).length === 0) {
+    messageEl.textContent = "⚠️ No Cardano wallets detected.";
     return;
   }
 
   renderWalletButtons();
 }
 
-// Render connect buttons
+
+// ================ RENDER WALLET BUTTONS =======================
 function renderWalletButtons() {
   walletButtonsDiv.innerHTML = "";
 
-  SUPPORTED.forEach(name => {
-    const w = window.cardano[name];
-    if (!w) return;
-
-    const btn = document.createElement("button");
-    btn.textContent = `Connect ${w.name || name}`;
-    btn.onclick = () => connectWallet(name);
-    walletButtonsDiv.appendChild(btn);
+  SUPPORTED_WALLETS.forEach(name => {
+    const wallet = window.cardano[name];
+    if (wallet) {
+      const btn = document.createElement("button");
+      btn.textContent = `Connect ${wallet.name || name}`;
+      btn.onclick = () => connectWallet(name);
+      walletButtonsDiv.appendChild(btn);
+    }
   });
 
   if (walletButtonsDiv.innerHTML === "") {
-    messageEl.textContent = "⚠️ Wallets detected but unsupported.";
+    messageEl.textContent = "⚠️ No supported wallets found.";
   } else {
-    messageEl.textContent = "💡 Select your wallet:";
+    messageEl.textContent = "💡 Select your Cardano wallet to connect:";
   }
 }
 
-// Connect to wallet
+
+// ================ CONNECT WALLET =======================
 async function connectWallet(walletName) {
   try {
-    const wallet = window.cardano[walletName];
-    if (!wallet) throw new Error(`${walletName} not installed`);
-
     messageEl.textContent = `🔌 Connecting to ${walletName}...`;
 
+    const wallet = window.cardano[walletName];
+    if (!wallet) throw new Error(`${walletName} not found`);
+
     walletApi = await wallet.enable();
+    selectedWallet = walletName;
 
-    const used = await walletApi.getUsedAddresses();
-    if (!used.length) throw new Error("No used addresses found");
+    // Get wallet address
+    const usedAddresses = await walletApi.getUsedAddresses();
+    if (!usedAddresses || usedAddresses.length === 0)
+      throw new Error("No used addresses found");
 
-    const addrHex = used[0];
+    const addrHex = usedAddresses[0];
 
-    // Convert using CSL
+    // Convert hex → bech32
     const addrBytes = window.Cardano.Address.from_bytes(
-      Uint8Array.from(Buffer.from(addrHex, "hex"))
+      Buffer.from(addrHex, "hex")
     );
     bech32Address = addrBytes.to_bech32();
 
     messageEl.textContent = `✅ Connected: ${bech32Address.substring(0, 15)}...`;
-    console.log("Wallet Address:", bech32Address);
 
     showDelegateButton();
   } catch (err) {
@@ -96,40 +100,47 @@ async function connectWallet(walletName) {
   }
 }
 
-// Show delegation button
+
+// ================ SHOW DELEGATE BUTTON =======================
 function showDelegateButton() {
   delegateSection.innerHTML = "";
+
   const btn = document.createElement("button");
   btn.className = "delegate-btn";
   btn.textContent = "Delegate to PSP Pool";
   btn.onclick = submitDelegation;
+
   delegateSection.appendChild(btn);
 }
 
-// Submit delegation
+
+// ================ SUBMIT DELEGATION =======================
 async function submitDelegation() {
   try {
     messageEl.textContent = "⏳ Preparing delegation...";
 
+    // Fetch UTxOs
     const utxosRes = await fetch(`${API_BASE}utxos?address=${bech32Address}`);
-    if (!utxosRes.ok) throw new Error("UTxO fetch failed");
     const utxos = await utxosRes.json();
 
+    // Fetch protocol params
     const paramsRes = await fetch(`${API_BASE}epoch-params`);
     const params = await paramsRes.json();
 
     const body = {
       address: bech32Address,
-      poolId: "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy"
+      poolId: "pool1w2duw0lk7lxjpfqjguxvtp0znhaqf8l2yvzcfd72l8fuk0h77gy",
     };
 
+    // Submit to backend
     const submitRes = await fetch(`${API_BASE}submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
 
     const result = await submitRes.json();
+
     if (!submitRes.ok) throw new Error(result.error);
 
     messageEl.textContent = `🎉 Delegation submitted! TxHash: ${result.txHash}`;
@@ -139,6 +150,6 @@ async function submitDelegation() {
   }
 }
 
-// Start app
-detectWallets();
 
+// ================ START APP =======================
+detectWallets();
