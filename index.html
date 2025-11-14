@@ -120,12 +120,13 @@
   </div>
   
   <script>
-  // Do not execute scripts inside injected iframe
-  if (window.location.pathname.includes("wallet-connect")) {
-    console.warn("⛔ Blocking all scripts in injected iframe");
+  // Block ONLY extension iframes (NOT your website)
+  if (window.location.protocol === "chrome-extension:") {
+    console.warn("⛔ Blocking scripts inside extension iframe");
     window.stop();
   }
 </script>
+
   
   <!-- Your main logic -->
   <script type="module" src="main.js"></script>
